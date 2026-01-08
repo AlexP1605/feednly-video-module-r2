@@ -296,6 +296,14 @@
         setTimeout(() => { errorToast.classList.remove('active'); }, 4000);
     }
 
+    function fail(step, detail) {
+      const msg = `Échec (${step})${detail ? ' : ' + detail : ''}`;
+      console.error('[UPLOAD ERROR]', step, detail);
+      uploadText.textContent = msg;
+      showError(msg);
+      setTimeout(() => uploadOverlay.classList.remove('active'), 4000);
+    }
+
     function notifyHost(payload) {
       try {
         const msg = JSON.stringify(payload);
@@ -756,11 +764,8 @@
       const muxUploadUrl = getUploadURL();
       uploadOverlay.classList.add("active");
       uploadText.textContent = "Préparation...";
-      if (!muxUploadUrl || !recordedBlob) {
-        uploadText.textContent = "Erreur";
-        setTimeout(() => uploadOverlay.classList.remove("active"), 2000);
-        return;
-      }
+      if (!recordedBlob) return fail('no-video');
+      if (!muxUploadUrl) return fail('no-mux-upload-url');
       uploadText.textContent = "0%";
 
       const audioMode = getFinalAudioMode();
@@ -790,25 +795,33 @@
         }
       };
       xhr.onload = () => {
-        if (xhr.status < 300) {
-          uploadText.textContent = "Succès";
-          let assetId = "";
-          try {
-            const res = JSON.parse(xhr.responseText || "{}");
-            assetId = res.asset_id || "";
-          } catch (error) {}
-          notifyHost({ status: "success", action: "next_page", asset_id: assetId });
-        } else {
-          console.error("Upload failed:", xhr.responseText);
-          showError("Erreur upload vidéo");
-          uploadText.textContent = "Échec";
-          setTimeout(() => uploadOverlay.classList.remove("active"), 2000);
+        console.log('[UPLOAD] response status', xhr.status);
+
+        if (xhr.status >= 300) {
+          return fail(
+            'http-error',
+            `status ${xhr.status} – ${xhr.responseText?.slice(0, 200)}`
+          );
         }
+
+        let res;
+        try {
+          res = JSON.parse(xhr.responseText);
+        } catch (e) {
+          return fail('json-parse', 'réponse non JSON');
+        }
+
+        if (!res.asset_id) {
+          return fail('invalid-response', JSON.stringify(res));
+        }
+
+        uploadText.textContent = 'Succès';
+        notifyHost({ status: 'success', action: 'next_page', asset_id: res.asset_id });
       };
       xhr.onerror = () => {
-        uploadText.textContent = "Échec";
-        setTimeout(() => uploadOverlay.classList.remove("active"), 2000);
+        fail('network-error', 'requête bloquée ou non envoyée');
       };
+      console.log('[UPLOAD] sending request to Cloud Run');
       xhr.send(formData);
     };
 
