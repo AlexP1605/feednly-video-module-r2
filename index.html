@@ -783,6 +783,7 @@
         'https://feednly-video-audio-v2-506631399204.europe-west1.run.app/process-upload',
         true
       );
+      xhr.withCredentials = false;
       xhr.upload.onprogress = (e) => {
         if (e.lengthComputable) {
           uploadText.textContent = Math.round((e.loaded / e.total) * 100) + "%";
